@@ -156,10 +156,6 @@ Pull requests welcome. The most useful contributions are:
 
 ## License
 
-Apache 2.0 — use it, modify it, ship it, no restrictions.
+Apache 2.0
 
 <br>
-
-## Credits
-
-Built by [Kahalewai](https://github.com/kahalewai) · Claude did all the heavy lifting
