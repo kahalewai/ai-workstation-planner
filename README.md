@@ -1,14 +1,26 @@
-# Dynamic AI Workstation Planner
+<div align="center">
+
+<img width="571" height="294" alt="d-ai-wp" src="https://github.com/user-attachments/assets/427d7a53-e1d6-457a-80b2-2be82f7150b6" />
+
+</div>
+
+## Intro
 
 An interactive calculator for planning local AI model inference on unified-memory workstations. Built for machines like the HP Z2 Mini G1a (Strix Halo), NVIDIA DGX Spark, and Apple Mac M4 Max — compact desktop systems with 128 GB of shared CPU/GPU memory that can run frontier AI models locally.
 
-**[Try it live →](https://kahalewai.github.io/ai-workstation-planner/)**
+<br>
 
-## What this does
+## How it works
 
 You select your hardware, pick a model, and the calculator shows you exactly what happens: how fast it generates tokens, how much context window you get, and how VRAM is divided between model weights and KV cache. Two optimization toggles — APEX-Quant (weight compression) and TurboQuant (KV cache compression) — let you see the real impact of each technique independently. A context window slider lets you dial in your exact configuration, and every number updates in real time.
 
 The goal is to answer the question: *"Can I run this model on my hardware, and what will the experience actually be like?"*
+
+<br>
+
+**[Try it live →](https://kahalewai.github.io/ai-workstation-planner/)**
+
+<br>
 
 ## Features
 
@@ -39,6 +51,8 @@ max_context = min(free_vram / kv_per_token, model_max)
 
 **Light/dark theme** with a blue-toned light palette and the classic dark mode.
 
+<br>
+
 ## Files
 
 | File | Purpose |
@@ -47,6 +61,8 @@ max_context = min(free_vram / kv_per_token, model_max)
 | `models.js` | External model + system database — overrides inline data if present |
 
 Both files together give you the full experience. The HTML works without `models.js` (it has a fallback copy of all data inline), but having `models.js` alongside it makes updating model data easier without touching the HTML.
+
+<br>
 
 ## Hosting
 
@@ -60,6 +76,8 @@ Just open `index.html` in a browser. No server needed. Everything runs client-si
 
 **Any static host:**
 Upload `index.html` and `models.js` to the same directory. That's it.
+
+<br>
 
 ## Adding or updating models
 
@@ -93,6 +111,8 @@ Edit `models.js`. Each model entry looks like:
 
 Adding a new system is similar — see the `SYSTEM_DB` array at the top of `models.js`.
 
+<br>
+
 ## How the calculations work
 
 **Token generation speed** is bandwidth-limited on unified-memory systems. The GPU must read the active model weights from shared memory for every token generated. For MoE models, only the active expert weights are read (plus ~30% overhead for routing/shared layers).
@@ -103,11 +123,15 @@ Adding a new system is similar — see the `SYSTEM_DB` array at the top of `mode
 
 **TurboQuant** applies random orthogonal rotation to KV vectors, then uses optimal scalar quantization near the Shannon limit. The rotation makes every coordinate follow a predictable distribution, enabling mathematically optimal compression. It's orthogonal to weight quantization — they stack.
 
+<br>
+
 ## Data accuracy
 
 Architecture details (layer counts, KV head configurations) are confirmed from model cards and HuggingFace configs where available, and estimated from typical architectures where not. Weight sizes are calculated from parameter counts at the listed quantization level and cross-referenced with community GGUF releases. The calculations are directionally accurate for planning purposes — exact numbers may vary by 10–20% from real-world measurements due to runtime overhead, driver differences, and model-specific optimizations.
 
 Models using Multi-head Latent Attention (MLA) — including Mistral Small 4, Kimi K2.5, DeepSeek V3.2/V4, and GLM-5 — have compressed KV caches that this calculator does not yet model. The displayed KV usage for these models is conservative (overestimated).
+
+<br>
 
 ## Built with
 
@@ -116,6 +140,8 @@ Models using Multi-head Latent Attention (MLA) — including Mistral Small 4, Ki
 - [DM Sans](https://fonts.google.com/specimen/DM+Sans) + [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) from Google Fonts
 - Content Security Policy headers for script source restriction
 - Data from model cards, HuggingFace configs, community benchmarks, and first-principles calculations
+
+<br>
 
 ## Contributing
 
@@ -126,9 +152,13 @@ Pull requests welcome. The most useful contributions are:
 - **MLA attention modeling** — the calculator overestimates KV cache for MLA models; a correction factor would improve accuracy
 - **Bug fixes and UI improvements**
 
+<br>
+
 ## License
 
 Apache 2.0 — use it, modify it, ship it, no restrictions.
+
+<br>
 
 ## Credits
 
