@@ -87,7 +87,7 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </head>
 <body>
 <div class="hdr">
-  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400">v6.7</span></h1>
+  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400">v6.13</span></h1>
   <button class="tbtn" onclick="togTheme()"><div class="ti"></div><span id="tl">Light</span></button>
 </div>
 <p class="sub">Inference planning for unified-memory AI workstations &middot; APEX + TurboQuant optimization toggles</p>
@@ -96,12 +96,21 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
   <h3>System</h3>
   <div class="rw"><label>Hardware</label><select id="sys" onchange="chgSys()"></select></div>
   <div id="si"></div>
+  <div class="tog" id="ttm-row" style="display:none;margin-top:10px">
+    <span class="tog-label">TTM Override</span>
+    <div class="tog-sw on" id="ttm-tog" onclick="togTTM()"><div class="tog-knob"></div></div>
+    <span class="tog-desc">Linux kernel TTM page limit override. Increases Strix Halo VRAM from 96 GB (BIOS default) to 120 GB.</span>
+    <span class="tog-impact" id="ttm-impact"></span>
+  </div>
 </div>
 
 <h2>Model calculator</h2>
 <div class="cd">
   <div class="rw"><label>Model</label><select id="mdl" onchange="onModelChange()"></select></div>
-  <div class="rw"><label>VRAM (GB)</label><input type="range" id="vr" min="80" max="128" value="120" step="1" oninput="onVramSlide()"><span class="vl" id="vrv">120</span></div>
+  <div style="display:flex;gap:16px;margin:0 0 12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--fg3)">System VRAM</span><span class="vl" id="vrv" style="font-size:14px"></span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--fg3)">Used</span><span class="vl" id="vru" style="font-size:14px;color:var(--accent2)"></span></div>
+  </div>
 
   <h3 style="margin-top:14px">Optimization toggles</h3>
   <div class="tog">
@@ -158,7 +167,7 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </div>
 
 
-<div class="ft">v6.7 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-05<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
+<div class="ft">v6.13 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-05<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
 
 <script src="models.js" onerror=""></script>
 <script>
@@ -198,20 +207,22 @@ if(!window.MODEL_DB) window.MODEL_DB = [
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script>
-var EF=.75,OH=2,cS=null,apexOn=true,tqOn=true,ch1=null,ch2=null;
+var EF=.75,OH=2,cS=null,apexOn=true,tqOn=true,ttmOn=true,ch1=null,ch2=null;
 var SNAPS=[4096,8192,16384,32768,65536,131072,262144,524288,1000000,2000000,4000000,10000000];
 
 function togTheme(){document.documentElement.classList.toggle('light');var l=document.documentElement.classList.contains('light');document.getElementById('tl').textContent=l?'Dark':'Light';try{localStorage.setItem('th',l?'l':'d')}catch(e){};renderCharts()}
 function ldTh(){try{if(localStorage.getItem('th')==='l'){document.documentElement.classList.add('light');document.getElementById('tl').textContent='Dark'}}catch(e){}}
 function togApex(){apexOn=!apexOn;document.getElementById('apex-tog').classList.toggle('on',apexOn);updateCtxSlider();calc();bT();renderCharts()}
 function togTQ(){tqOn=!tqOn;document.getElementById('tq-tog').classList.toggle('on',tqOn);document.getElementById('tq-options').style.display=tqOn?'flex':'none';updateCtxSlider();calc();bT();renderCharts()}
+function togTTM(){ttmOn=!ttmOn;document.getElementById('ttm-tog').classList.toggle('on',ttmOn);document.getElementById('ttm-impact').textContent=ttmOn?'120 GB':'96 GB';document.getElementById('vrv').textContent=getVram()+' GB';updateCtxSlider();calc();bT();renderCharts()}
+function getVram(){if(!cS)return 120;if(cS.vram_default_gb===cS.vram_max_gb)return cS.vram_max_gb;return ttmOn?cS.vram_max_gb:cS.vram_default_gb}
 function getKvC(){if(!tqOn)return 1.0;return parseFloat(document.getElementById('kv').value)}
 function getWg(m){if(apexOn)return m.weight_gb;if(m.apex_applied)return m.weight_gb_no_apex;return m.weight_gb}
 
 function popSys(){var s=document.getElementById('sys');SYSTEM_DB.forEach(function(x){var o=document.createElement('option');o.value=x.id;o.textContent=x.name;s.appendChild(o)})}
 function gS(id){return SYSTEM_DB.find(function(s){return s.id===id})}
 function gM(id){return MODEL_DB.find(function(m){return m.id===id})}
-function chgSys(){var s=gS(document.getElementById('sys').value);cS=s;var sl=document.getElementById('vr');sl.min=Math.max(s.vram_default_gb-20,60);sl.max=s.vram_max_gb;sl.value=s.vram_max_gb;document.getElementById('si').innerHTML='<div class="sg"><div class="ss"><div class="k">Chip</div><div class="v" style="font-size:12px">'+s.chip+'</div></div><div class="ss"><div class="k">Bandwidth</div><div class="v">'+s.bandwidth_gbs+' GB/s</div></div><div class="ss"><div class="k">VRAM default</div><div class="v">'+s.vram_default_gb+' GB</div></div><div class="ss"><div class="k">VRAM max</div><div class="v">'+s.vram_max_gb+' GB</div></div></div><div class="sn">'+s.notes+'</div>';updateCtxSlider();calc();bT();renderCharts()}
+function chgSys(){var s=gS(document.getElementById('sys').value);cS=s;var hasTTM=s.vram_default_gb!==s.vram_max_gb;document.getElementById('ttm-row').style.display=hasTTM?'flex':'none';document.getElementById('vrv').textContent=getVram()+' GB';document.getElementById('ttm-impact').textContent=ttmOn?s.vram_max_gb+' GB':s.vram_default_gb+' GB';document.getElementById('si').innerHTML='<div class="sg"><div class="ss"><div class="k">Chip</div><div class="v" style="font-size:12px">'+s.chip+'</div></div><div class="ss"><div class="k">Bandwidth</div><div class="v">'+s.bandwidth_gbs+' GB/s</div></div><div class="ss"><div class="k">VRAM</div><div class="v">'+getVram()+' GB</div></div><div class="ss"><div class="k">Backend</div><div class="v" style="font-size:11px">'+s.backend+'</div></div></div><div class="sn">'+s.notes+'</div>';updateCtxSlider();calc();bT();renderCharts()}
 function popMdl(){var s=document.getElementById('mdl');s.innerHTML='';var g={};MODEL_DB.forEach(function(m){if(!g[m.category])g[m.category]=[];g[m.category].push(m)});['recommended','new','frontier','wontfit'].forEach(function(c){if(!g[c])return;var og=document.createElement('optgroup');og.label={recommended:'Recommended',new:'New releases',frontier:'Fits with tradeoffs',wontfit:'Does not fit'}[c]||c;g[c].forEach(function(m){var o=document.createElement('option');o.value=m.id;o.textContent=m.name;og.appendChild(o)});s.appendChild(og)})}
 function fK(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return Math.round(n/1e3).toLocaleString()+'K';return n.toLocaleString()}
 
@@ -223,7 +234,7 @@ function getCtxTokens(){return validSnaps[parseInt(document.getElementById('ctx'
 // Calculate VRAM-limited max context for given model+config
 function vramMaxCtx(m){
   if(!cS)return 0;
-  var vr=parseInt(document.getElementById('vr').value);
+  var vr=getVram();
   var wg=getWg(m),kC=getKvC();
   var fr=vr-wg-OH;
   if(fr<=0)return 0;
@@ -242,7 +253,12 @@ function updateCtxSlider(){
   if(absMax<4096)absMax=4096;
 
   // Build valid snap array
-  validSnaps=SNAPS.filter(function(s){return s<=absMax});
+  // Build snaps including model-specific context boundaries
+  var dynSnaps=SNAPS.slice();
+  if(dynSnaps.indexOf(m.native_ctx)===-1)dynSnaps.push(m.native_ctx);
+  if(m.extended_ctx>m.native_ctx&&m.ctx_extension!=='none'&&dynSnaps.indexOf(m.extended_ctx)===-1)dynSnaps.push(m.extended_ctx);
+  dynSnaps.sort(function(a,b){return a-b});
+  validSnaps=dynSnaps.filter(function(s){return s<=absMax});
   if(validSnaps.length===0)validSnaps=[4096];
 
   var sl=document.getElementById('ctx');
@@ -316,7 +332,6 @@ function onCtxSlide(){
 
 // When model or VRAM changes, also update context slider
 function onModelChange(){updateCtxSlider();calc();bT();renderCharts()}
-function onVramSlide(){document.getElementById('vrv').textContent=document.getElementById('vr').value;updateCtxSlider();calc();bT();renderCharts()}
 
 function calcModel(m,vram,bw,ctxOverride){
   var wg=getWg(m),kC=getKvC(),fr=vram-wg-OH;
@@ -332,7 +347,7 @@ function calcModel(m,vram,bw,ctxOverride){
 
 function calc(){
   if(!cS)return;var m=gM(document.getElementById('mdl').value);if(!m)return;
-  var vr=parseInt(document.getElementById('vr').value),bw=cS.bandwidth_gbs;
+  var vr=getVram(),bw=cS.bandwidth_gbs;
   var ctxVal=getCtxTokens();
   var r=calcModel(m,vr,bw,ctxVal);
 
@@ -342,6 +357,8 @@ function calc(){
   document.getElementById('tq-impact').textContent=tqOn?r.kC+'x compression':'off (FP16 KV)';
 
   var kG=(r.cx*r.kvT)/1e9;
+  var usedVram=r.wg+kG+OH;
+  document.getElementById('vru').textContent=usedVram.toFixed(1)+' GB';
   var actualFree=r.fr-kG;
   var cc=r.fi?(r.cx>=1e5?'g':r.cx>=3e4?'':'w'):'b';
   var cs=r.fi?(r.tg>=30?'g':r.tg>=10?'':'w'):'b';
@@ -363,14 +380,14 @@ function calc(){
 
 function bT(){
   if(!cS)return;var tb=document.getElementById('tbd');tb.innerHTML='';
-  var vr=cS.vram_max_gb,bw=cS.bandwidth_gbs;
+  var vr=getVram(),bw=cS.bandwidth_gbs;
   MODEL_DB.forEach(function(m){
     var r=calcModel(m,vr,bw);
     r.cx=Math.min(r.cR,r.modelMax);
     var c=m.category;
-    var fp=c==='wontfit'?'<span class="pl pr">no</span>':r.fr<10?'<span class="pl pa">tight</span>':'<span class="pl pg">yes</span>';
+    var fp=r.fr<=0?'<span class="pl pr">no</span>':r.fr<10?'<span class="pl pa">tight</span>':'<span class="pl pg">yes</span>';
     var cp=c==='recommended'?'<span class="pl pt">rec</span>':c==='new'?'<span class="pl pp">new</span>':c==='frontier'?'<span class="pl pa">frontier</span>':'';
-    var rc=c==='recommended'?'hl':c==='wontfit'?'wf':'';
+    var rc=c==='recommended'?'hl':r.fr<=0?'wf':'';
     var extBadge=m.extended_ctx>m.native_ctx&&m.ctx_extension!=='none'?' <span class="pl pp" style="font-size:8px">'+m.ctx_extension+'</span>':'';
     tb.innerHTML+='<tr class="'+rc+'"><td>'+m.name+'<br>'+cp+' <span class="tg">'+m.license+'</span></td><td>'+(m.is_moe?'MoE':'Dense')+'</td><td>'+m.total_params_b+'B'+(m.is_moe?'<br><span class="tg">'+m.active_params_b+'B active</span>':'')+'</td><td>'+r.wg.toFixed(1)+'GB<br><span class="tg">'+m.quant_label+'</span></td><td>'+fp+'</td><td>'+(r.fi?'~'+r.tg:'n/a')+'</td><td>'+(r.fi?fK(r.cx)+' tokens':'n/a')+extBadge+'</td></tr>';
   });
@@ -384,16 +401,17 @@ function showTab(i){
 
 function renderCharts(){
   if(!cS||typeof Chart==='undefined')return;
-  var vr=cS.vram_max_gb,bw=cS.bandwidth_gbs;
-  var fit=MODEL_DB.filter(function(m){var w=getWg(m);return (vr-w-OH)>0});
+  var vr=getVram(),bw=cS.bandwidth_gbs;
+  var actuallyFit=MODEL_DB.filter(function(m){var w=getWg(m);return (vr-w-OH)>0});
   var isDark=!document.documentElement.classList.contains('light');
   var gridC=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
   var txtC=isDark?'#9c9a92':'#5f5e5a';
 
-  var labels1=fit.map(function(m){return m.name.replace(/ \(.*\)/,'').substring(0,25)});
-  var weights1=fit.map(function(m){return getWg(m)});
-  var kv1=fit.map(function(m){var r=calcModel(m,vr,bw);var cx=Math.min(r.cR,r.modelMax);return r.fi?Math.min((cx*r.kvT)/1e9,r.fr):0});
-  var free1=fit.map(function(m,i){var r=calcModel(m,vr,bw);return r.fi?Math.max(r.fr-kv1[i],0):0});
+  // Bar chart: only models that actually fit
+  var labels1=actuallyFit.map(function(m){return m.name.replace(/ \(.*\)/,'').substring(0,25)});
+  var weights1=actuallyFit.map(function(m){return getWg(m)});
+  var kv1=actuallyFit.map(function(m){var r=calcModel(m,vr,bw);var cx=Math.min(r.cR,r.modelMax);return r.fi?Math.min((cx*r.kvT)/1e9,r.fr):0});
+  var free1=actuallyFit.map(function(m,i){var r=calcModel(m,vr,bw);return r.fi?Math.max(r.fr-kv1[i],0):0});
 
   if(ch1)ch1.destroy();
   ch1=new Chart(document.getElementById('chart1'),{type:'bar',data:{labels:labels1,datasets:[
@@ -402,8 +420,9 @@ function renderCharts(){
     {label:'Free (GB)',data:free1,backgroundColor:isDark?'#2a2a32':'#d3d1c7'}
   ]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:txtC,font:{family:'DM Sans'}}}},scales:{x:{stacked:true,max:vr,grid:{color:gridC},ticks:{color:txtC,font:{family:'JetBrains Mono',size:10}},title:{display:true,text:'VRAM (GB)',color:txtC}},y:{stacked:true,grid:{display:false},ticks:{color:txtC,font:{family:'DM Sans',size:11}}}}}});
 
-  var bubbles=fit.map(function(m){var r=calcModel(m,vr,bw);var cx=Math.min(r.cR,r.modelMax);return{x:r.fi?r.tg:0,y:r.fi?cx:0,r:Math.max(Math.sqrt(m.total_params_b)*2,6),label:m.name.replace(/ \(.*\)/,'').substring(0,20)}});
-  var colors2=fit.map(function(m){return m.category==='recommended'?(isDark?'rgba(29,158,117,.7)':'rgba(137,180,212,.75)'):m.category==='new'?(isDark?'rgba(127,119,221,.7)':'rgba(91,127,165,.7)'):(isDark?'rgba(239,159,39,.5)':'rgba(184,146,62,.5)')});
+  // Bubble chart: only models that actually fit (0,0 is useless noise)
+  var bubbles=actuallyFit.map(function(m){var r=calcModel(m,vr,bw);var cx=Math.min(r.cR,r.modelMax);return{x:r.tg,y:cx,r:Math.max(Math.sqrt(m.total_params_b)*2,6),label:m.name.replace(/ \(.*\)/,'').substring(0,20)}});
+  var colors2=actuallyFit.map(function(m){return m.category==='recommended'?(isDark?'rgba(29,158,117,.7)':'rgba(137,180,212,.75)'):m.category==='new'?(isDark?'rgba(127,119,221,.7)':'rgba(91,127,165,.7)'):(isDark?'rgba(239,159,39,.5)':'rgba(184,146,62,.5)')});
 
   if(ch2)ch2.destroy();
   ch2=new Chart(document.getElementById('chart2'),{type:'bubble',data:{datasets:[{
