@@ -87,7 +87,7 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </head>
 <body>
 <div class="hdr">
-  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400">v6.13</span></h1>
+  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400"></span></h1>
   <button class="tbtn" onclick="togTheme()"><div class="ti"></div><span id="tl">Light</span></button>
 </div>
 <p class="sub">Inference planning for unified-memory AI workstations &middot; APEX + TurboQuant optimization toggles</p>
@@ -167,7 +167,7 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </div>
 
 
-<div class="ft">v6.13 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-05<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
+<div class="ft">v6.14 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-05<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
 
 <script src="models.js" onerror=""></script>
 <script>
@@ -258,6 +258,10 @@ function updateCtxSlider(){
   if(dynSnaps.indexOf(m.native_ctx)===-1)dynSnaps.push(m.native_ctx);
   if(m.extended_ctx>m.native_ctx&&m.ctx_extension!=='none'&&dynSnaps.indexOf(m.extended_ctx)===-1)dynSnaps.push(m.extended_ctx);
   dynSnaps.sort(function(a,b){return a-b});
+  // Remove snaps that display identically (e.g., 1000000 and 1010000 both show "1.0M")
+  var seen={};var deduped=[];
+  for(var i=dynSnaps.length-1;i>=0;i--){var lbl=fK(dynSnaps[i]);if(!seen[lbl]){seen[lbl]=true;deduped.unshift(dynSnaps[i])}}
+  dynSnaps=deduped;
   validSnaps=dynSnaps.filter(function(s){return s<=absMax});
   if(validSnaps.length===0)validSnaps=[4096];
 
