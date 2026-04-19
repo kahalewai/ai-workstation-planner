@@ -64,6 +64,8 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 .tog-sw.on .tog-knob{transform:translateX(18px)}
 .tog-desc{font-size:11px;color:var(--fg3);flex:1}
 .tog-impact{font-size:11px;color:var(--teal);font-weight:500;font-family:var(--mono);min-width:80px;text-align:right}
+/* GPU count selector (mirrors .tog layout so alignment matches) */
+.cntsel{background:var(--bg3);color:var(--fg);border:1px solid var(--border2);border-radius:16px;padding:4px 10px;font-family:var(--mono);font-size:12px;cursor:pointer;width:auto;min-width:86px;flex-shrink:0}
 /* Tabs */
 .tabs{display:flex;gap:4px;margin:0 0 14px;border-bottom:1px solid var(--border)}
 .tab{padding:8px 16px;font-size:13px;color:var(--fg3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--font)}
@@ -87,10 +89,10 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </head>
 <body>
 <div class="hdr">
-  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400">v6.15</span></h1>
+  <h1>Dynamic AI Workstation Planner <span style="font-size:12px;color:var(--fg3);font-weight:400">v6.17</span></h1>
   <button class="tbtn" onclick="togTheme()"><div class="ti"></div><span id="tl">Light</span></button>
 </div>
-<p class="sub">Inference planning for unified-memory AI workstations &middot; APEX + TurboQuant optimization toggles</p>
+<p class="sub">Inference planning for unified-memory boxes and multi-GPU stacks &middot; APEX + TurboQuant optimization toggles</p>
 
 <div class="cd">
   <h3>System</h3>
@@ -101,6 +103,19 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
     <div class="tog-sw on" id="ttm-tog" onclick="togTTM()"><div class="tog-knob"></div></div>
     <span class="tog-desc">Linux kernel TTM page limit override. Increases Strix Halo VRAM from 96 GB (BIOS default) to 120 GB.</span>
     <span class="tog-impact" id="ttm-impact"></span>
+  </div>
+  <div class="tog" id="count-row" style="display:none;margin-top:10px">
+    <span class="tog-label">GPU count</span>
+    <select class="cntsel" id="gpu-count" onchange="chgCount()">
+      <option value="1">1 card</option>
+      <option value="2">2 cards</option>
+      <option value="3">3 cards</option>
+      <option value="4">4 cards</option>
+      <option value="6">6 cards</option>
+      <option value="8">8 cards</option>
+    </select>
+    <span class="tog-desc">Pipeline-parallel assumption (llama.cpp layer-split default): VRAM adds, bandwidth stays per-card. Tensor parallel with NVLink can scale bandwidth further.</span>
+    <span class="tog-impact" id="count-impact"></span>
   </div>
 </div>
 
@@ -126,7 +141,7 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
     <span class="tog-impact" id="tq-impact"></span>
   </div>
   <div id="tq-options" class="rw" style="margin-left:107px">
-    <select id="kv" onchange="updateCtxSlider();calc();bT();renderCharts()" style="max-width:400px">
+    <select id="kv" onchange="updateCtxSlider();calc();bT();renderCharts();popMdl()" style="max-width:400px">
       <option value="5.1">turbo3 \u2014 3-bit, 5.1x (best balance)</option>
       <option value="3.8">turbo4 \u2014 4-bit, 3.8x (safer quality)</option>
       <option value="3.5">asymmetric K:q8 V:turbo3 \u2014 ~3.5x (quality priority)</option>
@@ -167,63 +182,150 @@ tr.hl td{background:var(--accentbg)}tr.wf td{opacity:.4}
 </div>
 
 
-<div class="ft">v6.15 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-05<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
+<div class="ft">v6.17 &middot; Data: inline + optional <code>models.js</code> &middot; Updated 2026-04-17<br>Built by <a href="https://github.com/kahalewai/ai-workstation-planner" target="_blank">Kahalewai</a> &middot; Claude did all the heavy lifting</div>
 
 <script src="models.js" onerror=""></script>
 <script>
 if(!window.SYSTEM_DB) window.SYSTEM_DB = [
-  {id:"strix_halo",name:"HP Z2 Mini G1a (Strix Halo)",chip:"Ryzen AI MAX+ PRO 395 \u00b7 Radeon 8060S",mem_total_gb:128,vram_default_gb:96,vram_max_gb:120,bandwidth_gbs:212,backend:"ROCm HIP / Vulkan RADV",notes:"Use Linux TTM override for 120 GB VRAM. Vulkan RADV beats ROCm on MoE. 40 RDNA 3.5 CUs, 59.4 FP16 TFLOPS."},
-  {id:"dgx_spark",name:"NVIDIA DGX Spark (GB10)",chip:"GB10 Grace Blackwell \u00b7 CUDA",mem_total_gb:128,vram_default_gb:128,vram_max_gb:128,bandwidth_gbs:273,backend:"CUDA (native Blackwell)",notes:"Full 128 GB unified. Best software compat (CUDA). Native FP4/MXFP4. 273 GB/s shared bandwidth."},
-  {id:"mac_m4_max",name:"Apple Mac M4 Max (128 GB)",chip:"M4 Max \u00b7 40-core GPU \u00b7 Metal",mem_total_gb:128,vram_default_gb:128,vram_max_gb:128,bandwidth_gbs:546,backend:"Metal (llama.cpp native)",notes:"Highest bandwidth: 546 GB/s = ~2.5x faster token gen than Strix Halo. Full 128 GB unified."}
+  // ── UNIFIED MEMORY ──
+  {id:"strix_halo",name:"HP Z2 Mini G1a (Strix Halo)",chip:"Ryzen AI MAX+ PRO 395 \u00b7 Radeon 8060S",mem_total_gb:128,vram_default_gb:96,vram_max_gb:120,bandwidth_gbs:212,backend:"ROCm HIP / Vulkan RADV",type:"unified",group:"Unified memory",notes:"Use Linux TTM override for 120 GB VRAM. Vulkan RADV beats ROCm on MoE. 40 RDNA 3.5 CUs, 59.4 FP16 TFLOPS."},
+  {id:"dgx_spark",name:"NVIDIA DGX Spark (GB10)",chip:"GB10 Grace Blackwell \u00b7 CUDA",mem_total_gb:128,vram_default_gb:128,vram_max_gb:128,bandwidth_gbs:273,backend:"CUDA (native Blackwell)",type:"unified",group:"Unified memory",notes:"Full 128 GB unified. Best software compat (CUDA). Native FP4/MXFP4. 273 GB/s shared bandwidth."},
+  {id:"mac_m4_max",name:"Apple Mac M4 Max (128 GB)",chip:"M4 Max \u00b7 40-core GPU \u00b7 Metal",mem_total_gb:128,vram_default_gb:128,vram_max_gb:128,bandwidth_gbs:546,backend:"Metal (llama.cpp native)",type:"unified",group:"Unified memory",notes:"Highest bandwidth: 546 GB/s = ~2.5x faster token gen than Strix Halo. Full 128 GB unified."},
+  // ── CONSUMER GPU ──
+  {id:"rtx3060_12",name:"NVIDIA RTX 3060 12GB",chip:"GA106 \u00b7 Ampere \u00b7 3584 CUDA",mem_total_gb:12,vram_default_gb:12,vram_max_gb:12,bandwidth_gbs:360,backend:"CUDA",type:"gpu",group:"Consumer GPU",notes:"Entry-level 12 GB card. Slow bandwidth limits token gen to single digits on anything dense above 7B. Popular for stacking (4x 3060 = 48 GB cheap)."},
+  {id:"rtx4060ti_16",name:"NVIDIA RTX 4060 Ti 16GB",chip:"AD106 \u00b7 Ada \u00b7 4352 CUDA",mem_total_gb:16,vram_default_gb:16,vram_max_gb:16,bandwidth_gbs:288,backend:"CUDA",type:"gpu",group:"Consumer GPU",notes:"16 GB at low price. Bandwidth is the Achilles heel (128-bit bus). Good for fitting models; slow for generating."},
+  {id:"rtx4070tis_16",name:"NVIDIA RTX 4070 Ti Super 16GB",chip:"AD103 \u00b7 Ada \u00b7 8448 CUDA",mem_total_gb:16,vram_default_gb:16,vram_max_gb:16,bandwidth_gbs:672,backend:"CUDA",type:"gpu",group:"Consumer GPU",notes:"Good balance of VRAM and bandwidth. 256-bit bus helps. Popular sweet spot."},
+  {id:"rtx3090_24",name:"NVIDIA RTX 3090 24GB",chip:"GA102 \u00b7 Ampere \u00b7 10496 CUDA",mem_total_gb:24,vram_default_gb:24,vram_max_gb:24,bandwidth_gbs:936,backend:"CUDA",type:"gpu",group:"Consumer GPU",notes:"The LocalLLM workhorse. 24 GB + 936 GB/s on used market for $600-900. 2x 3090 (48 GB) runs 70B models comfortably; 4x (96 GB) approaches workstation territory."},
+  {id:"rtx4090_24",name:"NVIDIA RTX 4090 24GB",chip:"AD102 \u00b7 Ada \u00b7 16384 CUDA",mem_total_gb:24,vram_default_gb:24,vram_max_gb:24,bandwidth_gbs:1008,backend:"CUDA",type:"gpu",group:"Consumer GPU",notes:"Top consumer card until 5090. 24 GB + 1008 GB/s. ~2x compute of 3090 but similar for memory-bound inference."},
+  {id:"rtx5090_32",name:"NVIDIA RTX 5090 32GB",chip:"GB202 \u00b7 Blackwell \u00b7 21760 CUDA",mem_total_gb:32,vram_default_gb:32,vram_max_gb:32,bandwidth_gbs:1792,backend:"CUDA (native Blackwell)",type:"gpu",group:"Consumer GPU",notes:"GDDR7 on 512-bit bus = 1792 GB/s, the fastest consumer card. 32 GB finally breaks the 24 GB consumer ceiling. Native FP4/MXFP4 support."},
+  {id:"rx7900xtx_24",name:"AMD RX 7900 XTX 24GB",chip:"Navi 31 \u00b7 RDNA 3 \u00b7 6144 shaders",mem_total_gb:24,vram_default_gb:24,vram_max_gb:24,bandwidth_gbs:960,backend:"ROCm / Vulkan",type:"gpu",group:"Consumer GPU",notes:"AMD flagship. Comparable bandwidth to 3090. ROCm is now viable for llama.cpp/ollama. Vulkan backend works everywhere. Half the price of a 4090."},
+  // ── PROFESSIONAL GPU ──
+  {id:"rtxa6000_48",name:"NVIDIA RTX A6000 48GB",chip:"GA102 \u00b7 Ampere Pro \u00b7 10752 CUDA",mem_total_gb:48,vram_default_gb:48,vram_max_gb:48,bandwidth_gbs:768,backend:"CUDA",type:"gpu",group:"Professional GPU",notes:"Used-market king for serious builds. 48 GB ECC. Slightly slower than 3090 but double the VRAM. 2x A6000 = 96 GB, ideal for 70B-120B dense at Q4."},
+  {id:"rtx6000ada_48",name:"NVIDIA RTX 6000 Ada 48GB",chip:"AD102 \u00b7 Ada Pro \u00b7 18176 CUDA",mem_total_gb:48,vram_default_gb:48,vram_max_gb:48,bandwidth_gbs:960,backend:"CUDA",type:"gpu",group:"Professional GPU",notes:"Ada-gen successor to A6000. 48 GB + 960 GB/s. Blower-style 300W = fits dense 4-card workstations. Same VRAM as A6000, meaningfully faster."},
+  {id:"rtxpro6000b_96",name:"NVIDIA RTX PRO 6000 Blackwell 96GB",chip:"GB202 \u00b7 Blackwell Pro \u00b7 24064 CUDA",mem_total_gb:96,vram_default_gb:96,vram_max_gb:96,bandwidth_gbs:1792,backend:"CUDA (native Blackwell)",type:"gpu",group:"Professional GPU",notes:"96 GB GDDR7 on a single card. 1792 GB/s. The new workstation benchmark. Runs GPT-OSS 120B comfortably on one card; 2x gives headroom for 200B+ dense."},
+  // ── DATACENTER GPU ──
+  {id:"h100_80",name:"NVIDIA H100 SXM 80GB",chip:"GH100 \u00b7 Hopper \u00b7 16896 CUDA",mem_total_gb:80,vram_default_gb:80,vram_max_gb:80,bandwidth_gbs:3350,backend:"CUDA (Hopper / HBM3)",type:"gpu",group:"Datacenter GPU",notes:"80 GB HBM3 @ 3.35 TB/s. SXM form factor (not PCIe) so needs a DGX/HGX host. 8x H100 = 640 GB, canonical frontier inference node."},
+  {id:"h200_141",name:"NVIDIA H200 SXM 141GB",chip:"GH100 \u00b7 Hopper \u00b7 HBM3e",mem_total_gb:141,vram_default_gb:141,vram_max_gb:141,bandwidth_gbs:4800,backend:"CUDA (Hopper / HBM3e)",type:"gpu",group:"Datacenter GPU",notes:"141 GB HBM3e @ 4.8 TB/s. Same compute as H100, nearly 2x memory and ~43% more bandwidth. 8x H200 = 1.1 TB, handles Kimi K2.5 INT4 comfortably."},
+  {id:"b200_192",name:"NVIDIA B200 SXM 192GB",chip:"GB200 \u00b7 Blackwell \u00b7 HBM3e",mem_total_gb:192,vram_default_gb:192,vram_max_gb:192,bandwidth_gbs:8000,backend:"CUDA (native Blackwell)",type:"gpu",group:"Datacenter GPU",notes:"Current datacenter flagship. 192 GB HBM3e @ 8 TB/s. 2nd-gen Transformer Engine with native FP4. A single B200 fits DeepSeek V3.2 at Q2. 8x B200 = 1.5 TB."}
 ];
 if(!window.MODEL_DB) window.MODEL_DB = [
-  // ── RECOMMENDED ──────────────────────────────────
+  // ── RECOMMENDED ──
   {id:"qwen35_apex_iq",name:"Qwen3.5-35B-A3B (APEX I-Quality)",total_params_b:35,active_params_b:3,is_moe:true,n_layers:64,n_attn_layers:16,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:1010000,ctx_extension:"YaRN",quant_label:"APEX I-Quality (4-6 bit)",weight_gb:19.7,weight_gb_apex:21.3,apex_applied:true,apex_available:true,category:"recommended",release_date:"2025-09-01",license:"Apache 2.0",notes:"Sweet spot. 16/64 layers use full attention (rest Gated DeltaNet linear). APEX exploits 97% expert sparsity \u2014 beats F16 on HellaSwag. 262K native, extendable to 1M with YaRN. Outperforms the much larger Qwen3-235B."},
   {id:"qwen35_apex_mini",name:"Qwen3.5-35B-A3B (APEX Mini)",total_params_b:35,active_params_b:3,is_moe:true,n_layers:64,n_attn_layers:16,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:1010000,ctx_extension:"YaRN",quant_label:"APEX Mini (2-3 bit)",weight_gb:19.7,weight_gb_apex:12.2,apex_applied:true,apex_available:true,category:"recommended",release_date:"2025-09-01",license:"Apache 2.0",notes:"Trades ~0.5 PPL for 9 GB less weight. Massive KV headroom. Beats bartowski IQ2_M on every metric. Same 262K context."},
   {id:"gemma4_26b_moe",name:"Gemma 4 26B-A4B MoE",total_params_b:25.2,active_params_b:3.8,is_moe:true,n_layers:48,n_attn_layers:8,n_kv_heads:16,head_dim:256,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"Q4_K_M",weight_gb:14.5,weight_gb_apex:15.3,apex_applied:false,apex_available:true,category:"recommended",release_date:"2026-04-02",license:"Apache 2.0",notes:"Released Apr 2. #6 Arena AI with 3.8B active. 88.3% AIME 2026. 5:1 sliding window = 8 full KV layers. 256K native. Multimodal (text+image+video+audio). Apache 2.0. Best intelligence-per-parameter available."},
   {id:"gptoss120",name:"GPT-OSS 120B (INT4 native)",total_params_b:120,active_params_b:120,is_moe:false,n_layers:96,n_attn_layers:96,n_kv_heads:8,head_dim:128,native_ctx:32768,extended_ctx:32768,ctx_extension:"none",quant_label:"INT4 / MXFP4 native",weight_gb:62,weight_gb_apex:62.0,apex_applied:false,apex_available:false,category:"recommended",release_date:"2025-11-01",license:"Permissive",notes:"Closest to Opus 4.6 locally. Natively trained MXFP4 = minimal INT4 degradation. Dense = reads all 62 GB per token. Slow but highest quality."},
   {id:"gptoss20",name:"GPT-OSS 20B (INT4)",total_params_b:20,active_params_b:20,is_moe:false,n_layers:48,n_attn_layers:48,n_kv_heads:8,head_dim:128,native_ctx:32768,extended_ctx:32768,ctx_extension:"none",quant_label:"INT4",weight_gb:10,weight_gb_apex:10.0,apex_applied:false,apex_available:false,category:"recommended",release_date:"2025-11-01",license:"Permissive",notes:"Fast daily driver. 98.7% AIME 2025. Comfortable interactive speed. Great for general reasoning."},
-
-  // ── NEW RELEASES ─────────────────────────────────
+  // ── NEW RELEASES ──
   {id:"gemma4_31b",name:"Gemma 4 31B Dense",total_params_b:31,active_params_b:31,is_moe:false,n_layers:48,n_attn_layers:8,n_kv_heads:16,head_dim:256,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"Q4_K_M",weight_gb:18,weight_gb_apex:18.0,apex_applied:false,apex_available:false,category:"new",release_date:"2026-04-02",license:"Apache 2.0",notes:"#3 open model globally (ELO ~1452). 89.2% AIME, Codeforces 2150. Same sliding window KV as MoE variant. Dense = slower but higher ceiling. 256K context. Apache 2.0."},
   {id:"nemotron3_super",name:"Nemotron 3 Super-120B-A12B",total_params_b:120,active_params_b:12,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:131072,extended_ctx:131072,ctx_extension:"none",quant_label:"Q3_K_M",weight_gb:52,weight_gb_apex:73.0,apex_applied:false,apex_available:true,category:"new",release_date:"2026-02-01",license:"NVIDIA Open",notes:"NVIDIA flagship MoE. 120B/12B active. All 80 layers use full KV so context limited. 4-5x faster than dense GPT-OSS 120B at same param count."},
   {id:"qwen35_122b",name:"Qwen3.5-122B-A10B MoE",total_params_b:122,active_params_b:10,is_moe:true,n_layers:80,n_attn_layers:20,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:1010000,ctx_extension:"YaRN",quant_label:"Q4_K_M",weight_gb:69,weight_gb_apex:74.2,apex_applied:false,apex_available:true,category:"new",release_date:"2026-02-01",license:"Apache 2.0",notes:"Mid-tier Qwen3.5 MoE. 122B/10B active. Gated DeltaNet hybrid = ~20 full KV layers. Leads on agent benchmarks (BFCL-V4, BrowseComp). 262K native, 1M with YaRN. Strong multi-step reasoning and tool use."},
-  {id:"mistral_small4",name:"Mistral Small 4 (119B MoE)",total_params_b:119,active_params_b:6.5,is_moe:true,n_layers:64,n_attn_layers:64,n_kv_heads:8,head_dim:128,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"Q3_K_M",weight_gb:52,weight_gb_apex:72.4,apex_applied:false,apex_available:true,category:"new",release_date:"2026-03-16",license:"Apache 2.0",notes:"119B total, only 6.5B active (128 experts, 4 active). Uses MLA attention (KV cache shown here is conservative — real MLA KV is ~3x smaller, meaning context could be 3x larger than displayed). Configurable reasoning_effort toggle (none/high) replaces needing separate models. Multimodal (text+image). Beats GPT-OSS 120B on LiveCodeBench with 20% less output. At Q3_K_M ~52 GB, leaves 66 GB for KV. Apache 2.0."},
-
-  // ── FRONTIER (fits with tradeoffs) ───────────────
+  {id:"mistral_small4",name:"Mistral Small 4 (119B MoE)",total_params_b:119,active_params_b:6.5,is_moe:true,n_layers:64,n_attn_layers:64,n_kv_heads:8,head_dim:128,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"Q3_K_M",weight_gb:52,weight_gb_apex:72.4,apex_applied:false,apex_available:true,category:"new",release_date:"2026-03-16",license:"Apache 2.0",notes:"119B total, only 6.5B active (128 experts, 4 active). Uses MLA attention (KV cache shown here is conservative \u2014 real MLA KV is ~3x smaller, meaning context could be 3x larger than displayed). Configurable reasoning_effort toggle (none/high) replaces needing separate models. Multimodal (text+image). Beats GPT-OSS 120B on LiveCodeBench with 20% less output. At Q3_K_M ~52 GB, leaves 66 GB for KV. Apache 2.0."},
+  {id:"arcee_trinity_thinking",name:"Arcee Trinity-Large-Thinking (400B MoE)",total_params_b:400,active_params_b:13,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:524288,ctx_extension:"trained",quant_label:"Q2_K extreme",weight_gb:125,weight_gb_apex:240.0,apex_applied:false,apex_available:true,category:"new",release_date:"2026-04-01",license:"Apache 2.0",notes:"Released Apr 1, 2026. US-made, Apache 2.0, frontier-class reasoning. 256 experts, 4-of-256 active (1.56% sparsity ratio \u2014 extremely sparse). Trained on 17T tokens using Muon optimizer + SMEBU load balancing. 91.9 on PinchBench (vs Claude Opus 4.6's 93.3), 96.3 AIME25. Thinks inside <think> blocks. Needs GPU stack or 192 GB+ system. Trained at 256K, supports 512K inference."},
+  // ── FRONTIER ──
   {id:"qwen35_397b",name:"Qwen3.5-397B-A17B Flagship",total_params_b:397,active_params_b:17,is_moe:true,n_layers:96,n_attn_layers:24,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:1010000,ctx_extension:"YaRN",quant_label:"Q2_K extreme",weight_gb:124,weight_gb_apex:241.6,apex_applied:false,apex_available:true,category:"frontier",release_date:"2026-02-01",license:"Apache 2.0",notes:"Qwen3.5 flagship. 91.3% AIME\u201926, 83.6% LiveCodeBench. At Q2_K ~124 GB \u2014 only fits on 128 GB systems (DGX Spark / Mac M4 Max) with ~2 GB free. Too tight for meaningful context. Quality is top-tier but the VRAM situation makes it impractical unless you accept very short context."},
   {id:"llama4_scout",name:"Llama 4 Scout 109B MoE",total_params_b:109,active_params_b:17,is_moe:true,n_layers:48,n_attn_layers:48,n_kv_heads:8,head_dim:128,native_ctx:65536,extended_ctx:10000000,ctx_extension:"unverified",quant_label:"Q4_K_M",weight_gb:61,weight_gb_apex:66.3,apex_applied:false,apex_available:true,category:"frontier",release_date:"2025-04-01",license:"Llama Community",notes:"Meta MoE. 16 experts, 1 active. Benchmarks don't clearly beat smaller Gemma 4 despite larger size."},
+  {id:"llama4_maverick",name:"Llama 4 Maverick (400B MoE)",total_params_b:400,active_params_b:17,is_moe:true,n_layers:48,n_attn_layers:48,n_kv_heads:8,head_dim:128,native_ctx:262144,extended_ctx:1048576,ctx_extension:"trained",quant_label:"Q4_K_M",weight_gb:225,weight_gb_apex:240.0,apex_applied:false,apex_available:true,category:"frontier",release_date:"2025-04-05",license:"Llama Community",notes:"400B total, 17B active, 128 experts (1 routed + 1 shared per layer). iRoPE for extreme context (1M post-training from 256K pretrain). Alternates MoE and dense layers. Native multimodal (early fusion). Meta intended it for a single H100 DGX host (8x H100 = 640 GB). At Q4_K_M ~225 GB \u2014 needs 4x 96 GB PRO 6000 Blackwell minimum."},
   {id:"qwen3_235",name:"Qwen3-235B-A22B MoE",total_params_b:235,active_params_b:22,is_moe:true,n_layers:94,n_attn_layers:94,n_kv_heads:8,head_dim:128,native_ctx:32768,extended_ctx:262144,ctx_extension:"YaRN",quant_label:"Q2_K extreme",weight_gb:74,weight_gb_apex:143.0,apex_applied:false,apex_available:true,category:"frontier",release_date:"2025-06-01",license:"Qwen",notes:"Superseded by Qwen3.5-35B which outperforms it despite being much smaller. Q2_K is very aggressive. All 94 layers = massive KV. Kept for reference but not recommended over Qwen3.5."},
   {id:"minimax_m25",name:"MiniMax M2.5 (230B MoE)",total_params_b:230,active_params_b:10,is_moe:true,n_layers:61,n_attn_layers:61,n_kv_heads:8,head_dim:128,native_ctx:196608,extended_ctx:196608,ctx_extension:"none",quant_label:"UD-Q2_K_XL",weight_gb:82,weight_gb_apex:140.0,apex_applied:false,apex_available:true,category:"frontier",release_date:"2026-03-15",license:"MiniMax",notes:"80.2% SWE-Bench. 230B/10B active. At Q2_K ~82 GB, barely fits with minimal KV room."},
   {id:"gemma3_27b",name:"Gemma 3 27B Dense",total_params_b:27,active_params_b:27,is_moe:false,n_layers:36,n_attn_layers:6,n_kv_heads:4,head_dim:256,native_ctx:128000,extended_ctx:128000,ctx_extension:"none",quant_label:"Q4_K_M",weight_gb:16,weight_gb_apex:16.0,apex_applied:false,apex_available:false,category:"frontier",release_date:"2025-03-12",license:"Gemma Terms",notes:"Superseded by Gemma 4. 5:1 sliding = 6 full KV layers. 128K context. Previous Gemma terms license (not Apache 2.0)."},
-
-  // ── WON'T FIT ────────────────────────────────────
-  {id:"kimi_k25",name:"Kimi K2.5 (1T MoE)",total_params_b:1040,active_params_b:32,is_moe:true,n_layers:61,n_attn_layers:61,n_kv_heads:64,head_dim:112,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"INT4",weight_gb:520,weight_gb_apex:632.9,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-01-27",license:"Modified MIT",notes:"1T params. ~520 GB at INT4. Needs 4+ nodes. 96.1% AIME 2025. MLA reduces KV 10x but weight size is the blocker."},
-  {id:"deepseek_v32",name:"DeepSeek V3.2 (671B MoE)",total_params_b:671,active_params_b:37,is_moe:true,n_layers:61,n_attn_layers:61,n_kv_heads:8,head_dim:128,native_ctx:131072,extended_ctx:131072,ctx_extension:"none",quant_label:"Q2_K",weight_gb:210,weight_gb_apex:408.4,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-01-01",license:"DeepSeek",notes:"671B total. ~210 GB. Does not fit single-node. Top coding benchmarks."},
-  {id:"mistral_large3",name:"Mistral Large 3 (675B MoE)",total_params_b:675,active_params_b:41,is_moe:true,n_layers:96,n_attn_layers:96,n_kv_heads:8,head_dim:128,native_ctx:131072,extended_ctx:131072,ctx_extension:"none",quant_label:"Q2_K",weight_gb:211,weight_gb_apex:410.8,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-03-01",license:"Apache 2.0",notes:"675B total. ~211 GB. Does not fit single-node."},
-  {id:"glm5",name:"GLM-5 (744B MoE)",total_params_b:744,active_params_b:40,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:204800,extended_ctx:204800,ctx_extension:"none",quant_label:"UD-IQ2_XXS",weight_gb:241,weight_gb_apex:452.8,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-02-11",license:"MIT",notes:"744B total, 40B active. 256 experts, 8 active. MLA + DSA attention. 200K context. MIT license. At IQ2_XXS still 241 GB. 77.8% SWE-bench, 50.4% HLE. Lowest hallucination rate of any frontier model. Needs multi-node or 256 GB Mac."},
-  {id:"deepseek_v4",name:"DeepSeek V4 (~1T MoE)",total_params_b:1000,active_params_b:32,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:1000000,extended_ctx:1000000,ctx_extension:"none",quant_label:"INT4 (est.)",weight_gb:500,weight_gb_apex:608.6,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-03-01",license:"Apache 2.0 (expected)",notes:"~1T params, ~32B active. Engram conditional memory + MLA + DSA. 1M native context. NOT YET FULLY RELEASED as of Apr 2026 (V4 Lite ~200B released Mar 9). Weights not publicly available yet. When released at INT4 ~500 GB, will need 4+ nodes."}
+  // ── WON'T FIT ──
+  {id:"kimi_k25",name:"Kimi K2.5 (1T MoE)",total_params_b:1040,active_params_b:32,is_moe:true,n_layers:61,n_attn_layers:61,n_kv_heads:64,head_dim:112,native_ctx:256000,extended_ctx:256000,ctx_extension:"none",quant_label:"INT4",weight_gb:520,weight_gb_apex:632.9,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-01-27",license:"Modified MIT",notes:"1T params. ~520 GB at INT4. Needs 4+ nodes or 4x B200. 96.1% AIME 2025. MLA reduces KV 10x but weight size is the blocker."},
+  {id:"deepseek_v32",name:"DeepSeek V3.2 (671B MoE)",total_params_b:671,active_params_b:37,is_moe:true,n_layers:61,n_attn_layers:61,n_kv_heads:8,head_dim:128,native_ctx:131072,extended_ctx:131072,ctx_extension:"none",quant_label:"Q2_K",weight_gb:210,weight_gb_apex:408.4,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-01-01",license:"DeepSeek",notes:"671B total. ~210 GB at Q2. Fits on 3x H200 or 2x B200. Top coding benchmarks."},
+  {id:"mistral_large3",name:"Mistral Large 3 (675B MoE)",total_params_b:675,active_params_b:41,is_moe:true,n_layers:96,n_attn_layers:96,n_kv_heads:8,head_dim:128,native_ctx:131072,extended_ctx:131072,ctx_extension:"none",quant_label:"Q2_K",weight_gb:211,weight_gb_apex:410.8,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-03-01",license:"Apache 2.0",notes:"675B total. ~211 GB. Fits on 3x H200 or 2x B200."},
+  {id:"glm5",name:"GLM-5 (744B MoE)",total_params_b:744,active_params_b:40,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:204800,extended_ctx:204800,ctx_extension:"none",quant_label:"UD-IQ2_XXS",weight_gb:241,weight_gb_apex:452.8,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-02-11",license:"MIT",notes:"744B total, 40B active. 256 experts, 8 active. MLA + DSA attention. 200K context. MIT license. At IQ2_XXS still 241 GB. 77.8% SWE-bench, 50.4% HLE. Lowest hallucination rate of any frontier model. Needs 2x B200 or 4x H200."},
+  {id:"deepseek_v4",name:"DeepSeek V4 (~1T MoE)",total_params_b:1000,active_params_b:32,is_moe:true,n_layers:80,n_attn_layers:80,n_kv_heads:8,head_dim:128,native_ctx:1000000,extended_ctx:1000000,ctx_extension:"none",quant_label:"INT4 (est.)",weight_gb:500,weight_gb_apex:608.6,apex_applied:false,apex_available:true,category:"wontfit",release_date:"2026-03-01",license:"Apache 2.0 (expected)",notes:"~1T params, ~32B active. Engram conditional memory + MLA + DSA. 1M native context. NOT YET FULLY RELEASED as of Apr 2026 (V4 Lite ~200B released Mar 9). Weights not publicly available yet. When released at INT4 ~500 GB, will need 4x B200 or 8x H200."}
 ];;
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script>
-var EF=.75,OH=2,cS=null,apexOn=true,tqOn=true,ttmOn=true,ch1=null,ch2=null;
+var EF=.75,OH=2,cS=null,apexOn=true,tqOn=true,ttmOn=true,cardCount=1,ch1=null,ch2=null;
 var SNAPS=[4096,8192,16384,32768,65536,131072,262144,524288,1000000,2000000,4000000,10000000];
 
 function togTheme(){document.documentElement.classList.toggle('light');var l=document.documentElement.classList.contains('light');document.getElementById('tl').textContent=l?'Dark':'Light';try{localStorage.setItem('th',l?'l':'d')}catch(e){};renderCharts()}
 function ldTh(){try{if(localStorage.getItem('th')==='l'){document.documentElement.classList.add('light');document.getElementById('tl').textContent='Dark'}}catch(e){}}
-function togApex(){apexOn=!apexOn;document.getElementById('apex-tog').classList.toggle('on',apexOn);updateCtxSlider();calc();bT();renderCharts()}
-function togTQ(){tqOn=!tqOn;document.getElementById('tq-tog').classList.toggle('on',tqOn);document.getElementById('tq-options').style.display=tqOn?'flex':'none';updateCtxSlider();calc();bT();renderCharts()}
-function togTTM(){ttmOn=!ttmOn;document.getElementById('ttm-tog').classList.toggle('on',ttmOn);document.getElementById('ttm-impact').textContent=ttmOn?'120 GB':'96 GB';document.getElementById('vrv').textContent=getVram()+' GB';updateCtxSlider();calc();bT();renderCharts()}
-function getVram(){if(!cS)return 120;if(cS.vram_default_gb===cS.vram_max_gb)return cS.vram_max_gb;return ttmOn?cS.vram_max_gb:cS.vram_default_gb}
+function togApex(){apexOn=!apexOn;document.getElementById('apex-tog').classList.toggle('on',apexOn);updateCtxSlider();calc();bT();renderCharts();popMdl()}
+function togTQ(){tqOn=!tqOn;document.getElementById('tq-tog').classList.toggle('on',tqOn);document.getElementById('tq-options').style.display=tqOn?'flex':'none';updateCtxSlider();calc();bT();renderCharts();popMdl()}
+function togTTM(){ttmOn=!ttmOn;document.getElementById('ttm-tog').classList.toggle('on',ttmOn);document.getElementById('ttm-impact').textContent=ttmOn?'120 GB':'96 GB';document.getElementById('vrv').textContent=getVram()+' GB';updateCtxSlider();calc();bT();renderCharts();popMdl()}
+function chgCount(){cardCount=parseInt(document.getElementById('gpu-count').value);var per=cS.vram_default_gb;document.getElementById('count-impact').textContent=cardCount+' \u00d7 '+per+' = '+(per*cardCount)+' GB';document.getElementById('vrv').textContent=getVram()+' GB';updateSysCard();updateCtxSlider();calc();bT();renderCharts();popMdl()}
+function getVram(){if(!cS)return 120;var per=(cS.vram_default_gb===cS.vram_max_gb)?cS.vram_max_gb:(ttmOn?cS.vram_max_gb:cS.vram_default_gb);var n=(cS.type==='gpu')?cardCount:1;return per*n}
+function getBw(){if(!cS)return 212;return cS.bandwidth_gbs}
 function getKvC(){if(!tqOn)return 1.0;return parseFloat(document.getElementById('kv').value)}
 function getWg(m){if(!m.apex_available)return m.weight_gb;return apexOn?m.weight_gb_apex:m.weight_gb}
 
-function popSys(){var s=document.getElementById('sys');SYSTEM_DB.forEach(function(x){var o=document.createElement('option');o.value=x.id;o.textContent=x.name;s.appendChild(o)})}
+// Fit is computed dynamically against current VRAM + toggles, not stored.
+// "fits"       = weights + native context fit with room
+// "tradeoffs"  = weights load but context shrinks below native
+// "wontfit"    = weights exceed VRAM, or usable context < 4K
+function fitCategory(m){
+  if(!cS)return 'fits';
+  var vr=getVram(),wg=getWg(m);
+  if(vr-OH-wg<=0)return 'wontfit';
+  var mc=vramMaxCtx(m);
+  if(mc<4096)return 'wontfit';
+  if(mc>=m.native_ctx)return 'fits';
+  return 'tradeoffs';
+}
+
+function popSys(){
+  var s=document.getElementById('sys');s.innerHTML='';
+  var g={};SYSTEM_DB.forEach(function(x){var k=x.group||'Systems';if(!g[k])g[k]=[];g[k].push(x)});
+  var order=['Unified memory','Consumer GPU','Professional GPU','Datacenter GPU'];
+  order.forEach(function(k){if(!g[k])return;var og=document.createElement('optgroup');og.label=k;g[k].forEach(function(x){var o=document.createElement('option');o.value=x.id;o.textContent=x.name;og.appendChild(o)});s.appendChild(og)});
+  // Catch any groups we didn't name explicitly
+  Object.keys(g).forEach(function(k){if(order.indexOf(k)>-1)return;var og=document.createElement('optgroup');og.label=k;g[k].forEach(function(x){var o=document.createElement('option');o.value=x.id;o.textContent=x.name;og.appendChild(o)});s.appendChild(og)});
+}
 function gS(id){return SYSTEM_DB.find(function(s){return s.id===id})}
 function gM(id){return MODEL_DB.find(function(m){return m.id===id})}
-function chgSys(){var s=gS(document.getElementById('sys').value);cS=s;var hasTTM=s.vram_default_gb!==s.vram_max_gb;document.getElementById('ttm-row').style.display=hasTTM?'flex':'none';document.getElementById('vrv').textContent=getVram()+' GB';document.getElementById('ttm-impact').textContent=ttmOn?s.vram_max_gb+' GB':s.vram_default_gb+' GB';document.getElementById('si').innerHTML='<div class="sg"><div class="ss"><div class="k">Chip</div><div class="v" style="font-size:12px">'+s.chip+'</div></div><div class="ss"><div class="k">Bandwidth</div><div class="v">'+s.bandwidth_gbs+' GB/s</div></div><div class="ss"><div class="k">VRAM</div><div class="v">'+getVram()+' GB</div></div><div class="ss"><div class="k">Backend</div><div class="v" style="font-size:11px">'+s.backend+'</div></div></div><div class="sn">'+s.notes+'</div>';updateCtxSlider();calc();bT();renderCharts()}
-function popMdl(){var s=document.getElementById('mdl');s.innerHTML='';var g={};MODEL_DB.forEach(function(m){if(!g[m.category])g[m.category]=[];g[m.category].push(m)});['recommended','new','frontier','wontfit'].forEach(function(c){if(!g[c])return;var og=document.createElement('optgroup');og.label={recommended:'Recommended',new:'New releases',frontier:'Fits with tradeoffs',wontfit:'Does not fit'}[c]||c;g[c].forEach(function(m){var o=document.createElement('option');o.value=m.id;o.textContent=m.name;og.appendChild(o)});s.appendChild(og)})}
+
+function updateSysCard(){
+  var s=cS;if(!s)return;
+  var isGPU=s.type==='gpu';
+  var vramLabel=isGPU?(cardCount+' \u00d7 '+s.vram_default_gb+' = '+getVram()+' GB'):(getVram()+' GB');
+  var bwLabel=isGPU&&cardCount>1?(s.bandwidth_gbs+' GB/s \u00d7 '+cardCount):(s.bandwidth_gbs+' GB/s');
+  var bwSub=isGPU&&cardCount>1?'<div style="font-size:9px;color:var(--fg3);margin-top:1px">per-card (PP)</div>':'';
+  document.getElementById('si').innerHTML='<div class="sg"><div class="ss"><div class="k">Chip</div><div class="v" style="font-size:12px">'+s.chip+'</div></div><div class="ss"><div class="k">Bandwidth</div><div class="v">'+bwLabel+'</div>'+bwSub+'</div><div class="ss"><div class="k">VRAM</div><div class="v">'+vramLabel+'</div></div><div class="ss"><div class="k">Backend</div><div class="v" style="font-size:11px">'+s.backend+'</div></div></div><div class="sn">'+s.notes+'</div>';
+}
+
+function chgSys(){
+  var s=gS(document.getElementById('sys').value);cS=s;
+  var hasTTM=s.vram_default_gb!==s.vram_max_gb;
+  var isGPU=s.type==='gpu';
+  document.getElementById('ttm-row').style.display=hasTTM?'flex':'none';
+  document.getElementById('count-row').style.display=isGPU?'flex':'none';
+  if(isGPU){
+    document.getElementById('gpu-count').value=String(cardCount);
+    document.getElementById('count-impact').textContent=cardCount+' \u00d7 '+s.vram_default_gb+' = '+(s.vram_default_gb*cardCount)+' GB';
+  }
+  document.getElementById('vrv').textContent=getVram()+' GB';
+  if(hasTTM)document.getElementById('ttm-impact').textContent=ttmOn?s.vram_max_gb+' GB':s.vram_default_gb+' GB';
+  updateSysCard();
+  updateCtxSlider();calc();bT();renderCharts();popMdl();
+}
+function popMdl(){
+  var s=document.getElementById('mdl');
+  var prev=s.value;
+  s.innerHTML='';
+  // "New release" visual marker: released within last 90 days of today
+  var today=new Date('2026-04-17'),cutoff=new Date(today);cutoff.setDate(cutoff.getDate()-90);
+  var g={fits:[],tradeoffs:[],wontfit:[]};
+  MODEL_DB.forEach(function(m){g[fitCategory(m)].push(m)});
+  // Sort newest-first within each group
+  Object.keys(g).forEach(function(k){g[k].sort(function(a,b){return (b.release_date||'').localeCompare(a.release_date||'')})});
+  var labels={fits:'Fits comfortably',tradeoffs:'Fits with tradeoffs',wontfit:'Does not fit'};
+  ['fits','tradeoffs','wontfit'].forEach(function(k){
+    if(!g[k].length)return;
+    var og=document.createElement('optgroup');og.label=labels[k];
+    g[k].forEach(function(m){
+      var o=document.createElement('option');o.value=m.id;
+      var isNew=m.release_date&&new Date(m.release_date)>=cutoff;
+      o.textContent=(isNew?'\u2728 ':'')+m.name;
+      og.appendChild(o);
+    });
+    s.appendChild(og);
+  });
+  // Restore prior selection if the model is still in the DB
+  if(prev&&MODEL_DB.find(function(m){return m.id===prev}))s.value=prev;
+}
 function fK(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return Math.round(n/1e3).toLocaleString()+'K';return n.toLocaleString()}
 
 // Valid snap points for current config (recalculated on change)
@@ -319,6 +421,8 @@ function updateCtxQuality(){
     el.innerHTML='<span style="color:var(--amber)">\u26A0 Unverified extension \u2014 claimed by vendor, not independently tested</span>';
   }else if(m.ctx_extension==='YaRN'||m.ctx_extension==='RoPE'){
     el.innerHTML='<span style="color:var(--accent2)">\u26A0 Extended via '+m.ctx_extension+' \u2014 quality may degrade beyond '+fK(m.native_ctx)+'</span>';
+  }else if(m.ctx_extension==='trained'){
+    el.innerHTML='<span style="color:var(--teal)">Fine-tuned to extended length \u2014 native quality preserved</span>';
   }else{
     el.innerHTML='<span style="color:var(--fg3)">At model limit</span>';
   }
@@ -351,7 +455,7 @@ function calcModel(m,vram,bw,ctxOverride){
 
 function calc(){
   if(!cS)return;var m=gM(document.getElementById('mdl').value);if(!m)return;
-  var vr=getVram(),bw=cS.bandwidth_gbs;
+  var vr=getVram(),bw=getBw();
   var ctxVal=getCtxTokens();
   var r=calcModel(m,vr,bw,ctxVal);
 
@@ -379,12 +483,13 @@ function calc(){
 
   document.getElementById('nt').innerHTML='<div class="nb">'+m.notes+'</div>';
   var extNote=r.cx>m.native_ctx&&m.ctx_extension!=='none'?'<br>'+m.ctx_extension+' scaling applied (beyond native '+fK(m.native_ctx)+')':'';
-  document.getElementById('dt').innerHTML='<div class="cb">'+cS.name+' @ '+bw+' GB/s | APEX: '+(apexOn?'ON':'OFF')+' | TurboQuant: '+(tqOn?r.kC+'x':'OFF')+'<br>Active: '+(m.is_moe?'('+m.active_params_b+'B/'+m.total_params_b+'B) x '+r.wg+'GB x 1.3':r.wg+'GB (dense)')+' = '+r.aG.toFixed(1)+' GB<br>Speed: '+bw+'/'+r.aG.toFixed(1)+' = '+(bw/r.aG).toFixed(1)+' t/s x 0.75 = ~'+r.tg+' t/s<br>KV: 2 x '+m.n_attn_layers+' attn x '+m.n_kv_heads+' heads x '+m.head_dim+' dim x 2B = '+r.kvF.toLocaleString()+' B/tok FP16<br>Compressed '+r.kC+'x = '+r.kvT.toFixed(0)+' B/tok<br>Context: '+fK(r.cx)+' tokens x '+r.kvT.toFixed(0)+' B = '+kG.toFixed(1)+' GB KV cache<br>VRAM max context: '+fK(r.cR)+' | Model max: '+fK(r.modelMax)+extNote+(m.n_attn_layers<m.n_layers?'<br>Only '+m.n_attn_layers+'/'+m.n_layers+' layers need full KV (rest: sliding window / linear / SSM)':'<br>All '+m.n_layers+' layers use full KV')+'</div>';
+  var sysLabel=cS.type==='gpu'&&cardCount>1?cardCount+'\u00d7 '+cS.name:cS.name;
+  document.getElementById('dt').innerHTML='<div class="cb">'+sysLabel+' @ '+bw+' GB/s'+(cS.type==='gpu'&&cardCount>1?' per card (PP)':'')+' | APEX: '+(apexOn?'ON':'OFF')+' | TurboQuant: '+(tqOn?r.kC+'x':'OFF')+'<br>Active: '+(m.is_moe?'('+m.active_params_b+'B/'+m.total_params_b+'B) x '+r.wg+'GB x 1.3':r.wg+'GB (dense)')+' = '+r.aG.toFixed(1)+' GB<br>Speed: '+bw+'/'+r.aG.toFixed(1)+' = '+(bw/r.aG).toFixed(1)+' t/s x 0.75 = ~'+r.tg+' t/s<br>KV: 2 x '+m.n_attn_layers+' attn x '+m.n_kv_heads+' heads x '+m.head_dim+' dim x 2B = '+r.kvF.toLocaleString()+' B/tok FP16<br>Compressed '+r.kC+'x = '+r.kvT.toFixed(0)+' B/tok<br>Context: '+fK(r.cx)+' tokens x '+r.kvT.toFixed(0)+' B = '+kG.toFixed(1)+' GB KV cache<br>VRAM max context: '+fK(r.cR)+' | Model max: '+fK(r.modelMax)+extNote+(m.n_attn_layers<m.n_layers?'<br>Only '+m.n_attn_layers+'/'+m.n_layers+' layers need full KV (rest: sliding window / linear / SSM)':'<br>All '+m.n_layers+' layers use full KV')+'</div>';
 }
 
 function bT(){
   if(!cS)return;var tb=document.getElementById('tbd');tb.innerHTML='';
-  var vr=getVram(),bw=cS.bandwidth_gbs;
+  var vr=getVram(),bw=getBw();
   MODEL_DB.forEach(function(m){
     var r=calcModel(m,vr,bw);
     r.cx=Math.min(r.cR,r.modelMax);
@@ -405,7 +510,7 @@ function showTab(i){
 
 function renderCharts(){
   if(!cS||typeof Chart==='undefined')return;
-  var vr=getVram(),bw=cS.bandwidth_gbs;
+  var vr=getVram(),bw=getBw();
   var actuallyFit=MODEL_DB.filter(function(m){var w=getWg(m);return (vr-w-OH)>0});
   var isDark=!document.documentElement.classList.contains('light');
   var gridC=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
